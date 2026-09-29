@@ -1,34 +1,35 @@
 # MarketPulse
 
-Self-hosted market data platform rozwijana jako projekt edukacyjny i portfolio:
-Python, React, systemy rozproszone oraz infrastruktura Kubernetes na Raspberry Pi 5.
-System ma pobierać dane rynkowe, przechowywać historię, wyświetlać wykresy i obliczać
-statystyki oraz alerty. Zakres obejmuje analizę danych, bez realizacji transakcji.
+A self-hosted market data platform built as a learning and portfolio project:
+Python, React, distributed systems, and Kubernetes infrastructure on Raspberry Pi 5.
+The platform will collect market data, store historical prices, display charts,
+calculate analytics, and trigger alerts. Its scope is data analysis, without trade execution.
 
 ## Status
 
-Repozytorium zawiera na razie strukturę i dokumentację projektu. Aplikacje, obrazy
-kontenerów, manifesty i pipeline CI/CD nie zostały jeszcze zaimplementowane.
-Nie ma jeszcze polecenia uruchamiającego całą platformę.
+The repository currently contains the project structure and documentation.
+Applications, container images, manifests, and CI/CD pipelines have not been
+implemented yet. There is no command to start the entire platform at this stage.
 
-## Stack i środowisko docelowe
+## Stack and target environment
 
-| Obszar | Technologia / przeznaczenie |
+| Area | Technology / purpose |
 | --- | --- |
-| Frontend | Next.js, React, TypeScript — dashboard, wykresy, watchlisty |
-| API | Python, FastAPI — HTTP API dla frontendu |
-| Przetwarzanie | Python — collector, analytics, alerts |
-| Dane | PostgreSQL — notowania, watchlisty, wyniki analiz, reguły alertów |
-| Zdarzenia | NATS, docelowo JetStream dla trwałego przetwarzania |
-| Runtime | Kontenery Linux ARM64, K3s na Raspberry Pi 5 z SSD 1 TB |
+| Frontend | Next.js, React, TypeScript — dashboard, charts, watchlists |
+| API | Python, FastAPI — HTTP API for the frontend |
+| Processing | Python — collector, analytics, alerts |
+| Data | PostgreSQL — prices, watchlists, analytics results, alert rules |
+| Events | NATS, with JetStream planned for durable processing |
+| Runtime | Linux ARM64 containers, K3s on Raspberry Pi 5 with a 1 TB SSD |
 | Deployment | Helm, Argo CD, GitOps |
-| CI i obrazy | Docelowo GitHub Actions i GHCR |
-| Obserwowalność | Prometheus, Grafana, Loki, OpenTelemetry |
+| CI and images | GitHub Actions and GHCR planned |
+| Observability | Prometheus, Grafana, Loki, OpenTelemetry |
 
-Docelowy host to `rpi5-01`, z Ubuntu Server ARM64. Konfigurację klastra oraz
-parametry zasobów będziemy potwierdzać przy wdrażaniu. Laptop służy do developmentu.
+The target host is `rpi5-01`, running Ubuntu Server ARM64. Cluster configuration
+and resource settings will be verified during deployment. Development takes place
+on a laptop.
 
-## Struktura monorepo
+## Monorepo structure
 
 ```text
 marketpulse/
@@ -36,13 +37,13 @@ marketpulse/
 │   ├── frontend/        # Next.js
 │   └── api/             # FastAPI
 ├── services/
-│   ├── collector/       # Pobieranie i normalizacja danych
-│   ├── analytics/       # Asynchroniczne obliczenia
-│   └── alerts/          # Reguły i zdarzenia alertów
+│   ├── collector/       # Data collection and normalization
+│   ├── analytics/       # Asynchronous calculations
+│   └── alerts/          # Alert rules and events
 ├── infra/
-│   ├── k8s/             # Bootstrap klastra i zasoby poza chartami aplikacji
-│   ├── helm/            # Charty i konfiguracja wdrożeń
-│   └── argocd/          # Definicje aplikacji GitOps
+│   ├── k8s/             # Cluster bootstrap and resources outside application charts
+│   ├── helm/            # Charts and deployment configuration
+│   └── argocd/          # GitOps application definitions
 ├── docs/
 │   └── architecture.md
 ├── AGENTS.md
@@ -50,39 +51,39 @@ marketpulse/
 └── .gitignore
 ```
 
-Puste katalogi zachowują w Git pliki `.gitkeep`; usuń je przy dodawaniu zawartości.
+Empty directories are tracked through `.gitkeep` files; remove these when adding content.
 
-## Roadmapa
+## Roadmap
 
-Wszystkie etapy poniżej są planowane.
+All stages below are planned.
 
-1. **v1 — pierwszy przepływ danych:** AAPL/MSFT/NVDA → collector → PostgreSQL
-   → FastAPI → wykres Next.js. Najpierw jeden dostawca i jeden interwał.
-2. **v2 — watchlisty i porównania:** własne listy, porównywanie instrumentów,
-   wykresy normalizowane do 100 i zmiany 1D/1W/1M/YTD.
-3. **v3 — przetwarzanie asynchroniczne:** NATS, analytics worker, stopy zwrotu,
-   średnie kroczące, zmienność, korelacje i drawdown.
-4. **v4 — alerty cenowe:** reguły progowe, historia wywołań, deduplikacja.
-5. **v5 — aktualizacje live:** WebSocket; częstotliwość zależna od dostawcy danych.
-6. **v6 — obserwowalność:** Prometheus/Grafana, Loki i OpenTelemetry.
-7. **v7 — pełny GitOps i CI/CD:** GitHub Actions → GHCR → Helm → Argo CD.
-8. **v8 — odporność:** testy restartów podów, ponownego przetwarzania zdarzeń
-   oraz odtwarzania danych z backupu.
+1. **v1 — initial data flow:** AAPL/MSFT/NVDA → collector → PostgreSQL
+   → FastAPI → Next.js chart. Start with one provider and one interval.
+2. **v2 — watchlists and comparisons:** custom lists, instrument comparisons,
+   charts normalized to 100, and 1D/1W/1M/YTD changes.
+3. **v3 — asynchronous processing:** NATS, an analytics worker, returns,
+   moving averages, volatility, correlations, and drawdown.
+4. **v4 — price alerts:** threshold rules, trigger history, and deduplication.
+5. **v5 — live updates:** WebSocket; update frequency depends on the data provider.
+6. **v6 — observability:** Prometheus/Grafana, Loki, and OpenTelemetry.
+7. **v7 — full GitOps and CI/CD:** GitHub Actions → GHCR → Helm → Argo CD.
+8. **v8 — resilience:** tests of pod restarts, event reprocessing,
+   and data restoration from backups.
 
-Infrastrukturę dokładamy stopniowo: przygotowanie hosta i SSD, K3s, pierwszy
-deployment, PostgreSQL z trwałym storage, ingress i Helm. Podstawowe logi,
-health checks i obsługa błędów powstają razem z aplikacjami.
+Infrastructure is added gradually: host and SSD preparation, K3s, the first
+deployment, PostgreSQL with persistent storage, ingress, and Helm. Basic logging,
+health checks, and error handling are developed alongside the applications.
 
-## Pierwszy etap implementacji
+## First implementation stage
 
-- Wybrać interwał i zweryfikować dostawcę danych; Twelve Data jest kandydatem
-  z wcześniejszych ustaleń, a limity i warunki użycia wymagają sprawdzenia.
-- Zdefiniować model instrumentu i świecy OHLCV oraz migracje PostgreSQL.
-- Zaimplementować idempotentny import i odczyt historii przez FastAPI.
-- Dodać pojedynczy wykres w Next.js, następnie kontenery i wdrożenie na K3s.
+- Choose a data interval and verify the provider. Twelve Data is a candidate
+  from the initial project discussions; its limits and terms still need verification.
+- Define instrument and OHLCV candle models, along with PostgreSQL migrations.
+- Implement idempotent imports and historical data access through FastAPI.
+- Add a single Next.js chart, followed by containers and deployment on K3s.
 
-Publiczne demo powinno używać danych, które można legalnie udostępniać;
-alternatywą są dane syntetyczne. Sekrety i lokalne dane pozostają poza repozytorium.
+A public demo must use data that can legally be shared; synthetic data is an
+alternative. Secrets and local runtime data stay outside the repository.
 
-Szczegóły przepływu danych i decyzje projektowe: [architektura](docs/architecture.md).
-Zasady dalszej pracy: [AGENTS.md](AGENTS.md).
+Data flows and design decisions: [architecture](docs/architecture.md).
+Contributor and agent guidance: [AGENTS.md](AGENTS.md).

@@ -1,68 +1,70 @@
-# MarketPulse — kontekst i zasady pracy
+# MarketPulse — project context and working guidelines
 
-## Cel i aktualny stan
+## Purpose and current state
 
-Budujemy self-hosted market data platform do nauki infrastruktury i jako projekt
-portfolio. Docelowe środowisko: Raspberry Pi 5, SSD 1 TB, Linux ARM64 i K3s.
-Priorytetem jest zrozumiały przepływ danych i stopniowe poznawanie infrastruktury.
-Nie implementujemy wykonywania zleceń giełdowych.
+We are building a self-hosted market data platform to learn infrastructure and
+create a portfolio project. Target environment: Raspberry Pi 5, a 1 TB SSD,
+Linux ARM64, and K3s. Prioritize understandable data flows and incremental learning.
+Trade execution is outside the scope of this project.
 
-Repo zawiera obecnie tylko szkielet i dokumentację. Nie zakładaj istnienia
-działających serwisów, testów, klastra ani pipeline. Czytaj README.md i
-docs/architecture.md przed zmianami; aktualizuj status wraz z implementacją.
+The repository currently contains only a scaffold and documentation. Do not assume
+working services, tests, a cluster, or a pipeline exist. Read README.md and
+docs/architecture.md before making changes; update the status as implementation progresses.
 
-## Ustalony stack i granice
+## Agreed stack and boundaries
 
-- `apps/frontend`: Next.js, React, TypeScript; komunikacja z HTTP API.
-- `apps/api`: Python/FastAPI; moduły market, watchlists i alert rules w jednym API
-  na start. Nie rozdzielaj ich przedwcześnie na dodatkowe mikroserwisy.
-- `services/collector`: Python; dostawca danych, normalizacja i zapis notowań.
-- `services/analytics`: Python worker; obliczenia na danych rynkowych.
-- `services/alerts`: Python worker; ocena reguł i zapis wywołanych alertów.
-- PostgreSQL jako trwały magazyn, NATS jako broker zdarzeń.
-- K3s, Helm i Argo CD; docelowo GitHub Actions oraz GHCR.
-- Prometheus/Grafana dla metryk, Loki dla logów, OpenTelemetry dla instrumentacji.
+- `apps/frontend`: Next.js, React, TypeScript; communicates through the HTTP API.
+- `apps/api`: Python/FastAPI; market, watchlists, and alert rules start as modules
+  within one API. Do not split them into additional microservices prematurely.
+- `services/collector`: Python; provider integration, normalization, and price storage.
+- `services/analytics`: Python worker; market data calculations.
+- `services/alerts`: Python worker; rule evaluation and alert event storage.
+- PostgreSQL for durable storage, NATS for event messaging.
+- K3s, Helm, and Argo CD; GitHub Actions and GHCR are planned.
+- Prometheus/Grafana for metrics, Loki for logs, OpenTelemetry for instrumentation.
 
-## Sposób realizacji
+## Implementation approach
 
-1. Zacznij od v1: AAPL/MSFT/NVDA → collector → PostgreSQL → API → wykres.
-2. Realizuj kolejne etapy roadmapy z README; nie instaluj całego stacku z góry.
-3. Traktuj katalogi jako granice odpowiedzialności i przyszłych obrazów kontenerów.
-4. Wybieraj rozwiązania mieszczące się na jednym Pi. Nie zakładaj HA, wielu węzłów
-   ani konkretnej ilości RAM bez sprawdzenia środowiska.
-5. Dokumentuj nowe decyzje i odróżniaj propozycje od wdrożonej funkcjonalności.
-6. Dokumentację pisz po polsku, nazwy w kodzie i kontrakty API po angielsku.
+1. Start with v1: AAPL/MSFT/NVDA → collector → PostgreSQL → API → chart.
+2. Follow the README roadmap incrementally; do not install the entire stack up front.
+3. Treat component directories as responsibility boundaries and future container images.
+4. Choose solutions that fit on a single Pi. Do not assume high availability,
+   multiple nodes, or a specific amount of RAM without checking the environment.
+5. Document new decisions and distinguish proposals from implemented functionality.
+6. Keep all repository content in English: documentation, code identifiers, comments,
+   docstrings, API contracts, user-facing text, configuration comments, and commit messages.
+   Do not introduce Polish text into repository files.
 
-## Dane i niezawodność
+## Data and reliability
 
-- Oddziel kod dostawcy od modelu domenowego; limity API muszą być konfigurowalne.
-- Stosuj timeouty, ograniczone retry z backoffem i obsługę rate limitów.
-- Używaj UTC dla timestampów, jawnej waluty i precyzyjnych typów dla cen.
-- Importy i konsumenci zdarzeń muszą tolerować powtórzenia. Nie obiecuj
-  przetwarzania exactly-once; projektuj deduplikację i bezpieczne ponowienia.
-- Zmiany schematu bazy prowadź przez wersjonowane migracje.
-- Nie dodawaj zależności od zewnętrznego API do testów jednostkowych; używaj fixtures.
-- Nie kopiuj do publicznego repo ani demo danych bez sprawdzenia praw do ich użycia.
+- Separate provider integration from the domain model; API limits must be configurable.
+- Use timeouts, bounded retries with backoff, and rate-limit handling.
+- Use UTC timestamps, explicit currencies, and precise numeric types for prices.
+- Imports and event consumers must tolerate duplicates. Do not promise exactly-once
+  processing; design for deduplication and safe retries.
+- Manage database schema changes through versioned migrations.
+- Use fixtures instead of external API dependencies in unit tests.
+- Verify data usage rights before including data in a public repository or demo.
 
-## Wdrożenia i sekrety
+## Deployments and secrets
 
-- Zapewnij obrazy `linux/arm64`; dodatkowe architektury dodawaj w miarę potrzeby.
-- Dobieraj wersje zależności przy implementacji, commituj lockfile i pinuj obrazy.
-- Manifesty aplikacji utrzymuj w Helm. `infra/k8s` służy do bootstrapu i zasobów
-  poza chartami; nie twórz dwóch źródeł konfiguracji tego samego zasobu.
-- Dodawaj probes odpowiednie dla typu procesu oraz requests/limits przy wdrażaniu.
-- PostgreSQL i trwały broker wymagają PVC, retencji i planu backupu/restore.
-- Nie commituj `.env`, tokenów, kubeconfigów, kluczy ani jawnych Kubernetes Secrets.
-  Pliki `.env.example` mogą zawierać wyłącznie atrapy. SOPS lub Sealed Secrets
-  wybierz i udokumentuj przed wprowadzeniem sekretów do GitOps.
-- Frontend nie łączy się bezpośrednio z bazą ani brokerem. Baza i NATS pozostają
-  wewnętrzne; sposób publikacji aplikacji jest osobnym etapem.
+- Support `linux/arm64` images; add other architectures as needed.
+- Choose dependency versions during implementation, commit lockfiles, and pin images.
+- Keep application manifests in Helm. Use `infra/k8s` for bootstrap and resources
+  outside charts; do not create two configuration sources for the same resource.
+- Add probes appropriate to each process, plus resource requests and limits at deployment.
+- PostgreSQL and durable messaging require PVCs, retention policies, and backup/restore plans.
+- Never commit `.env` files, tokens, kubeconfigs, keys, or plaintext Kubernetes Secrets.
+  `.env.example` files must contain placeholders only. Choose and document SOPS or
+  Sealed Secrets before introducing secrets into GitOps.
+- The frontend must not connect directly to the database or broker. PostgreSQL and
+  NATS remain internal; exposing the application is a separate stage.
 
-## Weryfikacja
+## Verification
 
-Uruchamiaj lint, sprawdzanie typów i testy właściwe dla zmienionego komponentu,
-gdy zostaną dodane jego narzędzia. Przy zmianach w Helm sprawdzaj lint i renderowanie
-chartów; przy obrazach weryfikuj ARM64. Dla samej dokumentacji sprawdź linki,
-spójność nazw i `git diff --check`. Nie twórz pozornych testów dla pustego szkieletu.
-W podsumowaniu podaj wykonane kontrole i ograniczenia; nie deklaruj wdrożenia
-ani testów, których nie wykonano.
+Run linting, type checks, and tests relevant to the changed component once its
+tooling exists. For Helm changes, lint and render charts; for container changes,
+verify ARM64 support. For documentation changes, check links, naming consistency,
+and `git diff --check`. Do not create superficial tests for an empty scaffold.
+Report the checks performed and their limitations; do not claim deployments or
+tests that were not actually run.

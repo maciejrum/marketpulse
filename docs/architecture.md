@@ -1,53 +1,53 @@
-# Architektura MarketPulse
+# MarketPulse architecture
 
-Status: projekt architektury, jeszcze bez implementacji. Dokument zachowuje
-ustalony kierunek; szczegóły proponowane poniżej należy weryfikować podczas prac.
+Status: architecture proposal, not yet implemented. This document preserves the
+agreed direction; the proposed details below should be verified during implementation.
 
-## Cel i zakres
+## Purpose and scope
 
-Platforma pobiera dane rynkowe i przechowuje własną historię na potrzeby wykresów,
-porównań, watchlist, analiz oraz alertów cenowych. Początkowy zakres to
-AAPL, MSFT i NVDA. ETF-y, forex i crypto mogą dojść po ustabilizowaniu modelu danych.
-Nie budujemy systemu realizującego transakcje ani infrastruktury high-frequency trading.
+The platform collects market data and stores its own history for charts,
+comparisons, watchlists, analytics, and price alerts. The initial scope covers
+AAPL, MSFT, and NVDA. ETFs, forex, and crypto may follow once the data model is stable.
+Trade execution and high-frequency trading infrastructure are outside the scope.
 
-Projekt służy nauce kontenerów, Kubernetes, komunikacji asynchronicznej,
-obserwowalności, GitOps oraz odtwarzania po awarii. Docelowo działa na jednym
-Raspberry Pi 5 z SSD 1 TB, Linux ARM64 i K3s. Restart poda nie zapewnia dostępności
-podczas awarii jedynego hosta lub dysku.
+The project teaches containers, Kubernetes, asynchronous messaging, observability,
+GitOps, and disaster recovery. The target is a single Raspberry Pi 5 with a 1 TB
+SSD, Linux ARM64, and K3s. Restarting a pod does not provide availability when the
+only host or disk fails.
 
-## Minimalny przepływ v1
+## Minimal v1 data flow
 
 ```mermaid
 flowchart LR
     Provider[External market data API] --> Collector[Collector / Python]
     Collector --> DB[(PostgreSQL)]
     DB --> API[FastAPI]
-    API --> Frontend[Next.js / wykres]
+    API --> Frontend[Next.js / chart]
 ```
 
-Collector pobiera jeden ustalony interwał, waliduje dane i zapisuje świece OHLCV.
-API udostępnia historię, frontend wyświetla wykres. V1 nie potrzebuje brokera.
-Kandydatem na dostawcę jest Twelve Data; limity, dostępność instrumentów i prawa
-do publikowania danych trzeba sprawdzić przed integracją. Warstwa adaptera pozwoli
-zmienić dostawcę bez przebudowania API i analityki.
+The collector fetches data at one agreed interval, validates it, and stores OHLCV
+candles. The API serves historical data, and the frontend displays a chart. V1 does
+not require a broker. Twelve Data is a candidate provider; limits, instrument
+availability, and redistribution rights must be checked before integration.
+A provider adapter will allow switching providers without redesigning the API or analytics.
 
-## Docelowe komponenty
+## Target components
 
-| Komponent | Odpowiedzialność | Planowany model uruchomienia |
+| Component | Responsibility | Planned runtime |
 | --- | --- | --- |
-| Frontend | Dashboard, wykresy, watchlisty, konfiguracja alertów | Next.js Deployment |
-| API | Odczyt danych, watchlisty, reguły alertów, później WebSocket | FastAPI Deployment |
-| Collector | Integracja z dostawcą, normalizacja, import historii | CronJob; później proces dla streamingu |
+| Frontend | Dashboard, charts, watchlists, alert configuration | Next.js Deployment |
+| API | Data access, watchlists, alert rules, later WebSocket | FastAPI Deployment |
+| Collector | Provider integration, normalization, historical imports | CronJob; later a streaming process |
 | Analytics | Returns, moving averages, volatility, correlations, drawdown | Python worker Deployment |
-| Alerts | Ocena reguł, historia wywołań, deduplikacja | Python worker Deployment |
-| PostgreSQL | Trwałe dane domenowe | Usługa stanowa z PVC na SSD |
-| NATS | Dystrybucja zdarzeń; JetStream dla trwałości | Usługa z trwałym storage dla JetStream |
+| Alerts | Rule evaluation, trigger history, deduplication | Python worker Deployment |
+| PostgreSQL | Durable domain data | Stateful service with an SSD-backed PVC |
+| NATS | Event distribution; JetStream for durability | Service with persistent storage for JetStream |
 
-Market API, Watchlist API i Alert API są początkowo modułami jednego FastAPI.
-Nie wymagają trzech osobnych wdrożeń. Workery nie potrzebują FastAPI, jeśli nie
-udostępniają HTTP; sposób health checks dobierz do procesu.
+Market API, Watchlist API, and Alert API initially live as modules within one
+FastAPI application. They do not require three separate deployments. Workers do
+not need FastAPI unless they expose HTTP; choose health checks appropriate to each process.
 
-## Zdarzenia i spójność — propozycja dla v3+
+## Events and consistency — proposal for v3+
 
 ```mermaid
 flowchart LR
@@ -63,80 +63,83 @@ flowchart LR
     API --> Frontend[Next.js]
 ```
 
-Zapis notowania i rekordu outbox w jednej transakcji ma zapobiegać utracie zdarzenia
-między zapisem do bazy a publikacją. Publisher może początkowo należeć do collectora;
-nie wymaga osobnego serwisu domenowego. Po potwierdzeniu publikacji oznacza rekord
-jako wysłany. Awaria pomiędzy tymi krokami nadal może spowodować duplikat.
+Writing a price record and an outbox entry in one transaction is intended to prevent
+event loss between database writes and publication. The publisher can initially
+belong to the collector; it does not require a separate domain service. After
+publication is acknowledged, it marks the entry as sent. A failure between these
+steps can still produce duplicates.
 
-Proponowany temat to `market.candles.updated.v1`. Zdarzenie zawiera `event_id`,
-`schema_version`, `occurred_at`, identyfikator instrumentu, dostawcę, interwał,
-czas świecy i kontekst trace. Konsumenci analytics i alerts mają niezależne
-subskrypcje trwałe; kopie tego samego workera współdzielą pracę w ramach własnej grupy.
+The proposed subject is `market.candles.updated.v1`. Each event includes `event_id`,
+`schema_version`, `occurred_at`, the instrument identifier, provider, interval,
+candle timestamp, and trace context. Analytics and alerts use independent durable
+subscriptions; replicas of the same worker share work within their own group.
 
-Przyjmujemy at-least-once delivery: ACK następuje po trwałym zapisie wyniku,
-a deduplikacja chroni przed powtórzeniem efektów. Retry musi mieć limit i obsługę
-trwale błędnych komunikatów. Szczegóły streamów, retencji i obsługi błędów zostaną
-zdefiniowane wraz z implementacją. Kanał powiadomień zewnętrznych nie jest wybrany.
+Assume at-least-once delivery: acknowledge messages after results are durably
+stored, and use deduplication to prevent repeated effects. Retries must be bounded,
+with handling for permanently invalid messages. Stream configuration, retention,
+and failure handling will be defined during implementation. An external
+notification channel has not been selected.
 
-## Dane — proponowany model początkowy
+## Data — proposed initial model
 
-- `instruments`: symbol, giełda/rynek, klasa aktywów, waluta, symbol u dostawcy.
-- `candles`: instrument, provider, interwał, timestamp UTC, OHLCV. Unikalność
-  `(provider, instrument_id, interval, timestamp)` umożliwia idempotentny upsert.
-- `watchlists` i `watchlist_items`: listy oraz przypisane instrumenty.
-- `analytics_results`: wyniki z okresem i wersją algorytmu.
-- `alert_rules` i `alert_events`: reguły progowe oraz historia ich uruchomień.
-- `outbox_events` i ewidencja przetworzenia: dodawane przy wdrażaniu messagingu.
+- `instruments`: symbol, exchange/market, asset class, currency, provider symbol.
+- `candles`: instrument, provider, interval, UTC timestamp, OHLCV. A unique key on
+  `(provider, instrument_id, interval, timestamp)` enables idempotent upserts.
+- `watchlists` and `watchlist_items`: lists and their associated instruments.
+- `analytics_results`: results with the calculation period and algorithm version.
+- `alert_rules` and `alert_events`: threshold rules and their trigger history.
+- `outbox_events` and processing records: introduced with messaging.
 
-Jeden PostgreSQL ogranicza koszty operacyjne. Serwisy dostają odrębne role i jasno
-określone prawa do tabel; nie każdy serwis zapisuje wszystko. Collector odpowiada
-za notowania, analytics za wyniki, API za watchlisty/reguły, alerts za ich wywołania.
-Schemat i migracje trzeba wybrać przed pierwszą implementacją.
+A single PostgreSQL instance reduces operational overhead. Services receive separate
+roles and explicit table permissions; not every service writes to every table.
+The collector owns prices, analytics owns calculated results, the API owns watchlists
+and rules, and alerts owns trigger records. Schema and migration tooling must be
+chosen before the first implementation.
 
-Ceny przechowujemy jako wartości dziesiętne z jawną walutą. UTC nie zastępuje
-kalendarza sesji giełdowych. Dla zwrotów i porównań należy określić sposób obsługi
-braków, splitów, dywidend i danych adjusted/unadjusted przed liczeniem wskaźników.
+Store prices as decimal values with explicit currencies. UTC does not replace
+exchange trading calendars. Before calculating returns and comparisons, define
+how to handle missing data, splits, dividends, and adjusted versus unadjusted prices.
 
-## K3s, Helm i GitOps
+## K3s, Helm, and GitOps
 
-- Początkowo jeden węzeł i po jednej replice aplikacji, skalowanie po pomiarach.
-- `infra/k8s`: bootstrap i zasoby klastra poza chartami aplikacji.
-- `infra/helm`: charty aplikacji oraz konfiguracja zależności i środowisk.
-- `infra/argocd`: deklaracje aplikacji śledzących konfigurację w Git.
-- Obrazy muszą wspierać `linux/arm64`; wersje i digesty ustalamy w implementacji.
-- Docelowy pipeline: testy → build → skan obrazu → GHCR → aktualizacja referencji
-  obrazu w Git → synchronizacja Argo CD. Sam push obrazu nie zmienia deploymentu.
-- Ingress przez Traefik jest planowany; domena, TLS i ewentualny Cloudflare Tunnel
-  pozostają do decyzji. PostgreSQL i NATS nie są publicznie dostępne.
-- PostgreSQL i JetStream wymagają PVC. Backup musi trafić poza ten sam SSD;
-  harmonogram, retencja, RPO/RTO i test restore zostaną określone przed stałym użyciem.
-- Requests/limits, probes, NetworkPolicy i ograniczenia retencji dobieramy do
-  zasobów hosta. Przy CronJob trzeba zapobiegać nakładającym się importom.
+- Start with one node and one replica per application; scale based on measurements.
+- `infra/k8s`: bootstrap and cluster resources outside application charts.
+- `infra/helm`: application charts, dependency configuration, and environment settings.
+- `infra/argocd`: application declarations tracking configuration in Git.
+- Images must support `linux/arm64`; choose versions and digests during implementation.
+- Target pipeline: tests → build → image scan → GHCR → update image references
+  in Git → Argo CD synchronization. Pushing an image alone does not update a deployment.
+- Traefik ingress is planned; the domain, TLS, and a possible Cloudflare Tunnel
+  remain open decisions. PostgreSQL and NATS are not publicly exposed.
+- PostgreSQL and JetStream require PVCs. Backups must be stored outside the same SSD;
+  define scheduling, retention, RPO/RTO, and restore tests before ongoing use.
+- Size requests/limits, probes, NetworkPolicy, and retention settings for the host.
+  Prevent overlapping imports when using a CronJob.
 
-## Obserwowalność
+## Observability
 
-| Narzędzie | Rola |
+| Tool | Role |
 | --- | --- |
-| Prometheus | Metryki infrastruktury i aplikacji |
-| Grafana | Dashboardy, wizualizacja metryk i logów |
-| Loki | Centralne logi strukturalne |
-| OpenTelemetry | Instrumentacja i propagacja kontekstu przez HTTP i zdarzenia |
+| Prometheus | Infrastructure and application metrics |
+| Grafana | Dashboards, metric and log visualization |
+| Loki | Centralized structured logs |
+| OpenTelemetry | Instrumentation and context propagation through HTTP and events |
 
-OpenTelemetry nie jest magazynem trace'ów. Backend śladów i konfigurację Collectora
-wybierzemy w etapie obserwowalności; nie dodajemy ich teraz jako ustalonej zależności.
-Podstawowe logi i health checks wdrażamy od v1. Docelowe sygnały obejmują opóźnienie
-notowań, błędy i limity dostawcy, opóźnienie konsumentów, retry, czas odpowiedzi API,
-wywołania alertów, zajętość dysku i wiek backupu. Logi nie zawierają sekretów.
+OpenTelemetry is not a trace store. Select a trace backend and Collector configuration
+during the observability stage; these are not fixed dependencies yet. Basic logging
+and health checks start in v1. Target signals include data freshness, provider errors
+and rate limits, consumer lag, retries, API response times, alert triggers, disk usage,
+and backup age. Logs must not contain secrets.
 
-## Otwarte decyzje i kryteria pierwszego etapu
+## Open decisions and first-stage acceptance criteria
 
-Do ustalenia: dostawca i interwał danych, wersje runtimów, narzędzia migracji
-i zależności, logowanie użytkowników, kanały powiadomień, domena, sposób zarządzania
-sekretami (np. SOPS albo Sealed Secrets), trace backend oraz polityka backupu.
-Przed publicznym udostępnieniem należy wdrożyć odpowiednią kontrolę dostępu.
+Still to be decided: data provider and interval, runtime versions, migration and
+dependency tooling, user authentication, notification channels, domain, secret
+management (such as SOPS or Sealed Secrets), trace backend, and backup policy.
+Implement appropriate access controls before exposing the application publicly.
 
-V1 jest gotowe, gdy import trzech instrumentów można bezpiecznie powtórzyć,
-API zwraca zapisane dane, frontend rysuje wykres i pokazuje stan braku danych/błędu,
-a dane pozostają po restarcie aplikacji. Testy obejmują normalizację, upsert,
-błędy dostawcy oraz odczyt API. Osobny test wdrożeniowy potwierdzi działanie na ARM64.
-Kolejne etapy opisuje [roadmapa](../README.md#roadmapa).
+V1 is complete when imports for the three instruments can be safely repeated,
+the API returns stored data, the frontend renders a chart and handles empty/error
+states, and data survives application restarts. Tests cover normalization, upserts,
+provider failures, and API reads. A separate deployment test will verify ARM64 operation.
+See the [roadmap](../README.md#roadmap) for subsequent stages.
