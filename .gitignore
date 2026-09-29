@@ -1,0 +1,64 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+.secrets/
+secrets.local.*
+kubeconfig
+kubeconfig.*
+.kube/
+
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+coverage/
+*.tsbuildinfo
+.vercel/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Runtime data and generated output
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+/data/
+/backups/
+/tmp/
+
+# Helm generated packages (keep Chart.lock and dependency lockfiles in Git)
+/infra/helm/**/charts/*.tgz
+/infra/helm/**/*.tgz
+
+# Editor / OS files
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
